@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one or more
+  ~ contributor license agreements.  See the NOTICE file distributed with
+  ~ this work for additional information regarding copyright ownership.
+  ~ The ASF licenses this file to You under the Apache License, Version 2.0
+  ~ (the "License"); you may not use this file except in compliance with
+  ~ the License.  You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.apache.streampark.console.system.mapper.MenuMapper">
+    <select id="findUserPermissions" resultType="java.lang.String">
+        select distinct m.perms
+        from t_role r
+        left join t_member ur on (r.role_id = ur.role_id)
+        left join t_role_menu rm on (rm.role_id = r.role_id)
+        left join t_menu m on (m.menu_id = rm.menu_id)
+        where ur.user_id = #{userId}
+        <if test="teamId != null">
+            and ur.team_id = #{teamId}
+        </if>
+        and m.perms is not null
+        and m.perms &lt;&gt; ''
+    </select>
+
+    <select id="findUserMenus" resultType="org.apache.streampark.console.system.entity.Menu">
+        select m.*
+        from t_menu m inner join t_role_menu rm
+        on m.menu_id = rm.menu_id
+        inner join t_member mr
+        on rm.role_id = mr.role_id
+        where m.type &lt;&gt; 1
+        and mr.user_id = #{userId}
+        and mr.team_id = #{teamId}
+        order by m.order_num
+    </select>
+
+    <select id="findUserIdsByMenuId" resultType="java.lang.String">
+        select user_id
+        from t_member
+        where role_id in
+        (select rm.role_id from t_role_menu rm where rm.menu_id = #{menuId})
+    </select>
+
+</mapper>
