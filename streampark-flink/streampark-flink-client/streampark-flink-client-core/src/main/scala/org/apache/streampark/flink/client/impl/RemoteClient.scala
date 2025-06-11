@@ -18,13 +18,15 @@
 package org.apache.streampark.flink.client.impl
 
 import org.apache.streampark.common.util.Utils
+import org.apache.streampark.flink.client.{FlinkClient, FlinkClientEntrypoint}
 import org.apache.streampark.flink.client.`trait`.FlinkClientTrait
 import org.apache.streampark.flink.client.bean.{CancelRequest, CancelResponse, SavepointRequestTrait, SavepointResponse, SubmitRequest, SubmitResponse, TriggerSavepointRequest}
 import org.apache.streampark.flink.client.tool.FlinkSessionSubmitHelper
+import org.apache.streampark.flink.proxy.FlinkShimsProxy
 
 import org.apache.flink.api.common.JobID
 import org.apache.flink.client.deployment.{DefaultClusterClientServiceLoader, StandaloneClusterDescriptor, StandaloneClusterId}
-import org.apache.flink.client.program.{ClusterClient, PackagedProgram}
+import org.apache.flink.client.program.{ClusterClient, PackagedProgram, PackagedProgramUtils}
 import org.apache.flink.configuration._
 
 import java.io.File
@@ -39,10 +41,27 @@ object RemoteClient extends FlinkClientTrait {
    */
   override def setConfig(submitRequest: SubmitRequest, flinkConfig: Configuration): Unit = {}
 
+  /**
+   * 构建JobGraph(就是直接调用flink的api)，然后提交到session集群。
+   * 调用栈：
+   *
+   * [[ApplicationController.start]] : http请求调用controller start方法，直接调用service start方法
+   * [[ApplicationServiceImpl.start]] : 校验参数，构建submitRequest，然后异步调用FlinkClient.submit(submitRequest)
+   * [[FlinkClient.submit]] : 设置securityManager，代理调用submit方法，和设置类加载器一个逻辑
+   * [[FlinkClient.proxy]] : 代理调用FlinkClientEntrypoint.submit方法
+   * [[FlinkShimsProxy.proxy]] : 把flink shims classloader缓存，每个flink版本之后提交都是一个classloader, 相当于模拟一个flink环境客户端
+   * [[FlinkClientEntrypoint.submit]] : 调用FlinkClientTrait.submit方法
+   * [[FlinkClientTrait.submit]] : streampark提交任务的入口，使用shimsClassLoader调用这个方法，相当于模拟一个flink环境客户端
+   * [[RemoteClient.doSubmit]] : 构建JobGraph(就是直接调用flink的api)，然后提交到session集群
+   * [[RemoteClient.jobGraphSubmit]] : 使用PackagedProgramUtils.createJobGraph构建JobGraph，然后提交到session集群
+   * [[PackagedProgramUtils.createJobGraph]] : 使用flink PackagedProgramUtils.createJobGraph构建JobGraph，然后提交到session集群
+   */
   override def doSubmit(
       submitRequest: SubmitRequest,
       flinkConfig: Configuration): SubmitResponse = {
 
+    // 提交job，就是调用jobGraphSubmit或者restApiSubmit函数提交job，所以直接去看jobGraphSubmit函数
+    // jobGraphSubmit函数：构建JobGraph，然后提交到session集群，构建JobGraph就是直接调用flink的api
     // 2) submit job
     super.trySubmit(submitRequest, flinkConfig, submitRequest.userJarFile)(
       jobGraphSubmit,
@@ -127,7 +146,10 @@ object RemoteClient extends FlinkClientTrait {
     SubmitResponse(null, flinkConfig.toMap, jobId, client.getWebInterfaceURL)
   }
 
-  /** Submit flink session job with building JobGraph via Standalone ClusterClient api. */
+  /**
+   * 构建JobGraph，然后提交到session集群，构建JobGraph就是直接调用flink的api
+   * Submit flink session job with building JobGraph via Standalone ClusterClient api.
+   */
   @throws[Exception]
   def jobGraphSubmit(
       submitRequest: SubmitRequest,
@@ -139,6 +161,7 @@ object RemoteClient extends FlinkClientTrait {
     try {
       val standAloneDescriptor = getStandAloneClusterDescriptor(flinkConfig)
       clusterDescriptor = standAloneDescriptor._2
+      // 构建JobGraph，就是直接调用flink的api
       // build JobGraph
       val packageProgramJobGraph = super.getJobGraph(flinkConfig, submitRequest, jarFile)
       packageProgram = packageProgramJobGraph._1

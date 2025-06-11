@@ -65,6 +65,7 @@ class FlinkVersion(val flinkHome: String) extends java.io.Serializable with Logg
   lazy val flinkLibs: List[NetURL] = flinkLib.listFiles().map(_.toURI.toURL).toList
 
   lazy val version: String = {
+    // 运行命令获取flink版本：java -classpath flink-dist-1.20.0.jar org.apache.flink.client.cli.CliFrontend --version
     val cmd = List(
       s"java -classpath ${flinkDistJar.getName} org.apache.flink.client.cli.CliFrontend --version"
     )

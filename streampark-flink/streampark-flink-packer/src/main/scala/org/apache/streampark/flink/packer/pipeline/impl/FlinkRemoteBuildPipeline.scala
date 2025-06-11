@@ -28,16 +28,38 @@ class FlinkRemoteBuildPipeline(request: FlinkRemotePerJobBuildRequest) extends B
 
   override def offerBuildParam: FlinkRemotePerJobBuildRequest = request
 
-  /** The construction logic needs to be implemented by subclasses */
+  /**
+   * job构建：
+   *   1.清空workspace目录(先删除目录再创建目录)
+   *   2.把执行程序和依赖都打成一个fat包，并存放在workspace目录
+   * 请求job构建的调用栈：
+   * [[ApplicationBuildPipelineController.buildApplication]]: http请求调用controller buildApplication方法，直接调用service buildApplication方法
+   * [[ApplicationServiceImpl.buildApplication]]: 检查flink环境，检查是否需要build，调用appBuildPipeService.buildApplication
+   * [[AppBuildPipeServiceImpl.buildApplication]]: FlinkRemoteBuildPipeline(FlinkRemotePerJobBuildRequest) pipeline，然后异步调用pipeline.launch
+   * [[AppBuildPipeServiceImpl.buildApplication]]: FlinkRemoteBuildPipeline(FlinkRemotePerJobBuildRequest) pipeline，然后异步调用pipeline.launch
+   * [[BuildPipeline.launch]]: 启动building pipeline，就只是异步调用buildProcess()方法
+   * [[FlinkRemoteBuildPipeline.buildProcess]]: 构建过程。1.清空workspace目录(先删除目录再创建目录)，2.把执行程序和依赖都打成一个fat包，并存放在workspace目录
+   *
+   * The construction logic needs to be implemented by subclasses
+   */
   @throws[Throwable]
   override protected def buildProcess(): ShadedBuildResponse = {
     execStep(1) {
+      /**
+       * 清空workspace目录：先删除目录再创建目录
+       * 例如：/opt/module/streampark_data/workspace/100002
+       */
       LfsOperator.mkCleanDirs(request.workspace)
       logInfo(s"recreate building workspace: ${request.workspace}")
     }.getOrElse(throw getError.exception)
-    // build flink job shaded jar
+    /**
+     * build flink job shaded jar
+     * 把执行程序和依赖都打成一个fat包，并存放在一个目录
+     * 例如：/opt/module/streampark_data/workspace/100002/streampark-flinkjob_FlinkEtlDemo.jar
+     */
     val shadedJar =
       execStep(2) {
+        // 把执行程序和依赖都打成一个fat包
         val output = MavenTool.buildFatJar(
           request.mainClass,
           request.providedLibs,

@@ -23,7 +23,6 @@ import org.apache.streampark.common.util.{DeflaterUtils, Logger, PropertiesUtils
 import org.apache.streampark.flink.client.bean._
 import org.apache.streampark.flink.core.conf.FlinkRunOption
 import org.apache.streampark.flink.deployment.FlinkClusterClient
-
 import com.google.common.collect.Lists
 import org.apache.commons.cli.{CommandLine, Options}
 import org.apache.commons.collections.MapUtils
@@ -38,8 +37,8 @@ import org.apache.flink.runtime.jobgraph.{JobGraph, SavepointConfigOptions}
 import org.apache.flink.util.Preconditions.checkNotNull
 
 import java.io.File
+import java.nio.file.Path
 import java.util.{Collections, List => JavaList, Map => JavaMap}
-
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -54,6 +53,9 @@ trait FlinkClientTrait extends Logger {
   private[client] lazy val PARAM_KEY_APP_NAME = KEY_APP_NAME("--")
   private[client] lazy val PARAM_KEY_FLINK_PARALLELISM = KEY_FLINK_PARALLELISM("--")
 
+  /**
+   * streampark提交任务的入口，使用shimsClassLoader调用这个方法，相当于模拟一个flink环境客户端
+   */
   @throws[Exception]
   def submit(submitRequest: SubmitRequest): SubmitResponse = {
     logInfo(
@@ -96,7 +98,9 @@ trait FlinkClientTrait extends Logger {
     val (commandLine, flinkConfig) = getCommandLineAndFlinkConfig(submitRequest)
 
     if (submitRequest.userJarFile != null) {
-      val uri = PackagedProgramUtils.resolveURI(submitRequest.userJarFile.getAbsolutePath)
+      //val uri = PackagedProgramUtils.resolveURI(submitRequest.userJarFile.getAbsolutePath)
+      println(submitRequest.userJarFile.getAbsolutePath)
+      val uri = Path.of(submitRequest.userJarFile.getAbsolutePath).normalize().toUri()
       val programOptions = ProgramOptions.create(commandLine)
       val executionParameters = ExecutionConfigAccessor.fromProgramOptions(
         programOptions,
@@ -234,6 +238,7 @@ trait FlinkClientTrait extends Logger {
     }
   }
 
+  // 构建JobGraph，就是直接调用flink的api
   private[client] def getJobGraph(
       flinkConfig: Configuration,
       submitRequest: SubmitRequest,
@@ -250,6 +255,7 @@ trait FlinkClientTrait extends Logger {
           .orElse(Lists.newArrayList()): _*)
       .build()
 
+    // 构建JobGraph，就是直接调用flink的api
     val jobGraph = PackagedProgramUtils.createJobGraph(
       packageProgram,
       flinkConfig,
@@ -420,6 +426,7 @@ trait FlinkClientTrait extends Logger {
     configuration
   }
 
+  // 用户应用入口参数
   private[this] def extractProgramArgs(submitRequest: SubmitRequest): JavaList[String] = {
     val programArgs = new ArrayBuffer[String]()
     programArgs ++= PropertiesUtils.extractArguments(submitRequest.args)

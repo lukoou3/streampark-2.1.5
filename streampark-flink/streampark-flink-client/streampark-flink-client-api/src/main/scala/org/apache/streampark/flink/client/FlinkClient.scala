@@ -47,8 +47,10 @@ object FlinkClient extends Logger {
     "org.apache.streampark.flink.client.bean.TriggerSavepointRequest" -> "triggerSavepoint"
 
   def submit(submitRequest: SubmitRequest): SubmitResponse = {
+    // 和设置类加载器一个逻辑
     val securityManager = System.getSecurityManager
     try {
+      // 防止用户应用调用System.exit
       System.setSecurityManager(new ExitSecurityManager())
       proxy[SubmitResponse](submitRequest, submitRequest.flinkVersion, SUBMIT_REQUEST)
     } finally {
@@ -77,6 +79,11 @@ object FlinkClient extends Logger {
       flinkVersion: FlinkVersion,
       requestBody: (String, String)): T = {
     flinkVersion.checkVersion()
+
+    /**
+     * 把flink shims classloader缓存，每个flink版本之后提交都是一个classloader, 相当于模拟一个flink环境客户端
+     * org.apache.streampark.flink.client.FlinkClientEntrypoint.submit
+     */
     FlinkShimsProxy.proxy(
       flinkVersion,
       (classLoader: ClassLoader) => {

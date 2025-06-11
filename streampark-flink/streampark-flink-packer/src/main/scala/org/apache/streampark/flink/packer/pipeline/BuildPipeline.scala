@@ -129,6 +129,7 @@ trait BuildPipeline extends BuildPipelineProcess with BuildPipelineExpose with L
     Try {
       watcher.onStart(snapshot)
       logInfo(s"building pipeline is launching, params=${offerBuildParam.toString}")
+      // 又在一个executor提交，调用buildProcess()方法
       executor
         .submit(new Callable[BuildResult] {
           override def call(): BuildResult = buildProcess()

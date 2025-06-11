@@ -105,12 +105,17 @@ object FlinkShimsProxy extends Logger {
     )
   }
 
+  /**
+   * 添加Shims
+   *
+   */
   private def addShimsUrls(flinkVersion: FlinkVersion, addShimUrl: File => Unit): Unit = {
     val appHome = System.getProperty(ConfigConst.KEY_APP_HOME)
     require(
       appHome != null,
       String.format("%s is not found on System env.", ConfigConst.KEY_APP_HOME))
 
+    // app home lib目录
     val libPath = new File(s"$appHome/lib")
     require(libPath.exists())
 
@@ -123,6 +128,8 @@ object FlinkShimsProxy extends Logger {
         (jar: File) => {
           val jarName = jar.getName
           if (jarName.endsWith(".jar")) {
+            // 以streampark-flink-shims_flink开头
+            // 过滤-${majorVersion}_$scalaVersion开头,例如：streampark-flink-shims_flink-1.20_2.12-2.1.5.jar
             if (jarName.startsWith(FLINK_SHIMS_PREFIX)) {
               val prefixVer = s"$FLINK_SHIMS_PREFIX-${majorVersion}_$scalaVersion"
               if (jarName.startsWith(prefixVer)) {
@@ -130,6 +137,8 @@ object FlinkShimsProxy extends Logger {
                 logInfo(s"include flink shims jar lib: $jarName")
               }
             } else {
+              // (streampark-shaded-jackson-)(.*).jar
+              // ^streampark-.*_2.12.*$
               if (INCLUDE_PATTERN.matcher(jarName).matches()) {
                 addShimUrl(jar)
                 logInfo(s"include jar lib: $jarName")
@@ -159,8 +168,10 @@ object FlinkShimsProxy extends Logger {
 
   private[this] def getFlinkShimsClassLoader(flinkVersion: FlinkVersion): ClassLoader = {
     logInfo(s"add flink shims urls classloader,flink version: $flinkVersion")
+    // 把flink shims classloader缓存，之后提交都是一个classloader, 相当于模拟一个flink的客户端
     SHIMS_CLASS_LOADER_CACHE.getOrElseUpdate(
       s"${flinkVersion.fullVersion}", {
+        // flink lib目录排除log4j开头jar
         // 1) flink/lib
         val libURL = getFlinkHomeLib(
           flinkVersion.flinkHome,
@@ -170,6 +181,7 @@ object FlinkShimsProxy extends Logger {
 
         val shimsUrls = ListBuffer[URL](libURL: _*)
 
+        // streampark shims jar
         // 2) add all shims jar
         addShimsUrls(
           flinkVersion,
@@ -179,6 +191,7 @@ object FlinkShimsProxy extends Logger {
             }
           })
 
+        // 使用ChildFirst ClassLoader
         new ChildFirstClassLoader(
           shimsUrls.toArray,
           Thread.currentThread().getContextClassLoader,

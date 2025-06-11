@@ -89,6 +89,8 @@ object MavenTool extends Logger {
   }
 
   /**
+   * build一个fat-jar使用传入的jarLibs集合
+   * 就是调用org.apache.maven.plugins.shade.DefaultShader的shade方法打包，我们也可以借鉴打包
    * Build a fat-jar with custom jar libraries.
    *
    * @param jarLibs

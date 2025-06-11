@@ -57,6 +57,7 @@ class ChildFirstClassLoader(
 
   private val JAR_PROTOCOL = "jar"
 
+  // 这些包下的类使用parent-first
   private val PARENT_FIRST_PATTERNS = List(
     "java.",
     "javax.xml",

@@ -1509,8 +1509,10 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
   @Override
   @Transactional(rollbackFor = {Exception.class})
   public void start(Application appParam, boolean auto) throws Exception {
+    // mybatis提供的方法，查找Application实体
     final Application application = getById(appParam.getId());
     Utils.notNull(application);
+    // 校验状态，不能重复启动
     if (!application.isCanBeStart()) {
       throw new ApiAlertException("[StreamPark] The application cannot be started repeatedly.");
     }
@@ -1520,6 +1522,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
       throw new ApiAlertException("[StreamPark] can no found flink version");
     }
 
+    // 如果是yarn任务，额外根据appName校验任务是否运行
     // check job on yarn is already running
     if (ExecutionMode.isYarnMode(application.getExecutionMode())) {
       ApiAlertException.throwIfTrue(
@@ -1538,6 +1541,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
       application.setRestartCount(application.getRestartCount() + 1);
     }
 
+    // 设置task状态为starting，同时更新数据库，用于webUI状态显示
     starting(application);
 
     application.setAllowNonRestored(
@@ -1559,7 +1563,9 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
     ApiAlertException.throwIfNull(
         executionMode, "ExecutionMode can't be null, start application failed.");
     if (application.isCustomCodeJob()) {
+      // 使用jar方式
       if (application.isUploadJob()) {
+        // 主类名: $internal.application.main
         appConf =
             String.format(
                 "json://{\"%s\":\"%s\"}",
@@ -1606,6 +1612,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
     } else if (application.isFlinkSqlJob()) {
       FlinkSql flinkSql = flinkSqlService.getEffective(application.getId(), false);
       Utils.notNull(flinkSql);
+      // 就是client目录下的streampark-flink-sqlclient_2.12-2.1.5.jar，项目和flink的scala版本需要一样
       // 1) dist_userJar
       String sqlDistJar = serviceHelper.getSqlClientJar(flinkEnv);
       // 2) appConfig
@@ -1624,10 +1631,14 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
 
     Map<String, Object> extraParameter = new HashMap<>(0);
     if (application.isFlinkSqlJob()) {
+      // 获取配置的sql
       FlinkSql flinkSql = flinkSqlService.getEffective(application.getId(), true);
+      // 替换sql中的变量
       // Get the sql of the replaced placeholder
       String realSql = variableService.replaceVariable(application.getTeamId(), flinkSql.getSql());
+      // zip压缩sql
       flinkSql.setSql(DeflaterUtils.zipString(realSql));
+      // extraParameter放入sql
       extraParameter.put(ConfigConst.KEY_FLINK_SQL(null), flinkSql.getSql());
     }
 
@@ -1639,6 +1650,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
       buildResult = new ShadedBuildResponse(null, flinkUserJar, true);
     }
 
+    // 任务参数，也会应用变量替换
     // Get the args after placeholder replacement
     String args =
         StringUtils.isBlank(appParam.getArgs()) ? application.getArgs() : appParam.getArgs();
@@ -1661,6 +1673,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
       k8sClusterId = null;
     }
 
+    // 构造SubmitRequest，就是scala的case class
     SubmitRequest submitRequest =
         SubmitRequest.apply(
             flinkEnv.getFlinkVersion(),
@@ -1681,11 +1694,13 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
             k8sNamespace,
             exposedType);
 
+    // 提交任务
     CompletableFuture<SubmitResponse> future =
         CompletableFuture.supplyAsync(() -> FlinkClient.submit(submitRequest), bootstrapExecutor);
 
     startFutureMap.put(application.getId(), future);
 
+    // 提交任务回调函数
     future.whenCompleteAsync(
         (response, throwable) -> {
           // 1) remove Future
@@ -1989,6 +2004,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
 
     ApiAlertException.throwIfNull(
         app.getVersionId(), "Please bind a Flink version to the current flink job.");
+    // 检查flink版本
     // 1) check flink version
     FlinkEnv env = flinkEnvService.getById(app.getVersionId());
     boolean checkVersion = env.getFlinkVersion().checkVersion(false);
@@ -1996,6 +2012,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
       throw new ApiAlertException("Unsupported flink version: " + env.getFlinkVersion().version());
     }
 
+    // 检查flink env
     // 2) check env
     boolean envOk = this.checkEnv(app);
     if (!envOk) {
@@ -2017,6 +2034,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
     applicationLog.setAppId(app.getId());
     applicationLog.setOptionTime(new Date());
 
+    // 是否需要build，如果不需要就直接返回成功
     boolean needBuild = this.checkBuildAndUpdate(app);
     if (!needBuild) {
       applicationLog.setSuccess(true);
@@ -2028,6 +2046,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
     if (app.isNeedRollback() && app.isFlinkSqlJob()) {
       flinkSqlService.rollback(app);
     }
+    // 调用appBuildPipeService.buildApplication
     boolean actionResult = appBuildPipeService.buildApplication(app, applicationLog);
     return RestResponse.success(actionResult);
   }

@@ -299,6 +299,10 @@ public class AppBuildPipeServiceImpl
     DOCKER_PULL_PG_SNAPSHOTS.invalidate(app.getId());
     DOCKER_BUILD_PG_SNAPSHOTS.invalidate(app.getId());
     DOCKER_PUSH_PG_SNAPSHOTS.invalidate(app.getId());
+      /**
+       * Launch the building pipeline.
+       * 作业上线，打jar包
+       */
     buildPipelineExecutor.submit(pipeline::launch);
     return saved;
   }
