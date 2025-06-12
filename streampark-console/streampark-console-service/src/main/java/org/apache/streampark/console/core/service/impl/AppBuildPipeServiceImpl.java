@@ -246,7 +246,7 @@ public class AppBuildPipeServiceImpl
                 }
               }
               applicationLog.setSuccess(true);
-              app.setBuild(false);
+              app.setBuild(false); // build成功
 
             } else {
               Message message =

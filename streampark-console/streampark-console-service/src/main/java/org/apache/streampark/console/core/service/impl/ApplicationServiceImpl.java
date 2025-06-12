@@ -792,6 +792,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
     if (appParam.isUploadJob()) {
       String jarPath =
           WebUtils.getAppTempDir().getAbsolutePath().concat("/").concat(appParam.getJar());
+      // 只在创建任务时设置了jarCheckSum参数，只要之后的主jar不和第一个相同，就会setBuild(true)
       appParam.setJarCheckSum(FileUtils.checksumCRC32(new File(jarPath)));
     }
 
@@ -925,12 +926,19 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
         success,
         String.format(ERROR_APP_QUEUE_HINT, appParam.getYarnQueue(), appParam.getTeamId()));
 
+    // 修改后设置状态需要为NEED_RELEASE，感觉类似工作流，流程有一定的规则
     application.setRelease(ReleaseState.NEED_RELEASE.get());
 
     if (application.isApacheFlinkCustomCodeJob()) {
       MavenDependency thisDependency = MavenDependency.of(appParam.getDependency());
       MavenDependency targetDependency = MavenDependency.of(application.getDependency());
 
+      /**
+       * 只有任务依赖的jar修改时才会设置下次需要重新build jar
+       *   1. 依赖的jar不同
+       *   2. 主jar名称不同
+       *   3. temp目录下的主jar的校验和和之前不同，这个checkSum现在就是首次创建任务时计算的(有点小问题，应该每次build后更新的)
+      */
       if (!thisDependency.equals(targetDependency)) {
         application.setDependency(appParam.getDependency());
         application.setBuild(true);
