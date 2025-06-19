@@ -35,11 +35,13 @@ private[flink] object FlinkSqlExecutor extends Logger {
 
   private[this] val lock = new ReentrantReadWriteLock().writeLock
 
+  // sql任务的入口
   private[streampark] def executeSql(
       sql: String,
       parameter: ParameterTool,
       context: TableEnvironment)(implicit callbackFunc: String => Unit = null): Unit = {
 
+    // 从参数--sql中读取sql
     val flinkSql: String =
       if (StringUtils.isBlank(sql)) parameter.get(KEY_FLINK_SQL()) else parameter.get(sql)
     require(StringUtils.isNotBlank(flinkSql), "verify failed: flink sql cannot be empty")
@@ -54,9 +56,10 @@ private[flink] object FlinkSqlExecutor extends Logger {
     val runMode = parameter.get(ExecutionOptions.RUNTIME_MODE.key())
 
     var hasInsert = false
+    // 使用statementSet可以同时运行多个insert语句
     val statementSet = context.createStatementSet()
     SqlCommandParser
-      .parseSQL(flinkSql)
+      .parseSQL(flinkSql) // 切分sql的各个语句, 把每个sql语句解析为SqlCommandCall
       .foreach(
         x => {
           val args = if (x.operands.isEmpty) null else x.operands.head
@@ -98,10 +101,12 @@ private[flink] object FlinkSqlExecutor extends Logger {
               val r = tableResult.collect().next().getField(0).toString
               callback(r)
             // For specific statement, such as: SET/RESET/INSERT/SELECT
+            // set修改config
             case SET =>
               val operand = x.operands(1)
               logInfo(s"$command: $args --> $operand")
               context.getConfig.getConfiguration.setString(args, operand)
+            // 似乎是重置config
             case RESET | RESET_ALL =>
               val confDataField = classOf[Configuration].getDeclaredField("confData")
               confDataField.setAccessible(true)
@@ -118,6 +123,7 @@ private[flink] object FlinkSqlExecutor extends Logger {
               logInfo(s"$command: $args")
             case BEGIN_STATEMENT_SET | END_STATEMENT_SET =>
               logWarn(s"SQL Client Syntax: ${x.command.name} ")
+            // insert语句
             case INSERT =>
               statementSet.addInsertSql(x.originSql)
               hasInsert = true
@@ -134,6 +140,7 @@ private[flink] object FlinkSqlExecutor extends Logger {
             case _ =>
               try {
                 lock.lock()
+                // 其他的都是执行executeSql，创建表创建视图等
                 val result = context.executeSql(x.originSql)
                 logInfo(s"$command:$args")
               } finally {

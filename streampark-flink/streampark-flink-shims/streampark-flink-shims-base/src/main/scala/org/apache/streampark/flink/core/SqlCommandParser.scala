@@ -37,7 +37,9 @@ private[flink] object SqlCommandParser extends Logger {
       validationCallback: FlinkSqlValidationResult => Unit = null): List[SqlCommandCall] = {
     val sqlEmptyError = "verify failed: flink sql cannot be empty."
     require(sql != null && sql.trim.nonEmpty, sqlEmptyError)
+    // 切分sql的各个语句, 返回的SqlSegment包含了对应sql在原始文本中的起始结束行。
     val sqlSegments = SqlSplitter.splitSql(sql)
+    // 把sql字符串解析为SqlCommandCall
     sqlSegments match {
       case s if s.isEmpty =>
         if (validationCallback != null) {
@@ -53,6 +55,7 @@ private[flink] object SqlCommandParser extends Logger {
       case segments =>
         val calls = new ListBuffer[SqlCommandCall]
         for (segment <- segments) {
+          // 把sql字符串解析为SqlCommandCall
           parseLine(segment) match {
             case Some(x) => calls += x
             case _ =>
@@ -89,7 +92,9 @@ private[flink] object SqlCommandParser extends Logger {
     }
   }
 
+  // 把sql字符串解析为SqlCommandCall
   private[this] def parseLine(sqlSegment: SqlSegment): Option[SqlCommandCall] = {
+    // 就是正则表达式解析
     val sqlCommand = SqlCommand.get(sqlSegment.sql.trim)
     if (sqlCommand == null) None
     else {
@@ -136,6 +141,7 @@ object SqlCommand extends enumeratum.Enum[SqlCommand] {
     breakable {
       this.values.foreach(
         x => {
+          // 正则匹配
           if (x.matches(stmt)) {
             cmd = x
             break()
@@ -426,6 +432,9 @@ object SqlSplitter {
   private lazy val singleLineCommentPrefixList = Set[String]("--")
 
   /**
+   * 就是切分sql的各个语句，spark sql就有类似的函数。
+   * 返回的SqlSegment包含了对应sql在原始文本中的起始结束行。
+   *
    * Split whole text into multiple sql statements. Two Steps: Step 1, split the whole text into
    * multiple sql statements. Step 2, refine the results. Replace the preceding sql statements with
    * empty lines, so that we can get the correct line number in the parsing error message. e.g:

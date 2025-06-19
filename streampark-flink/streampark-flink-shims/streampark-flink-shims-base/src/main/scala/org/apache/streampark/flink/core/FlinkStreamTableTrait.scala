@@ -83,6 +83,7 @@ abstract class FlinkStreamTableTrait(
     } else null
   }
 
+  // sql任务的入口
   def sql(sql: String = null)(implicit callback: String => Unit = null): Unit =
     FlinkSqlExecutor.executeSql(sql, parameter, this)
   // ...streamEnv api start...

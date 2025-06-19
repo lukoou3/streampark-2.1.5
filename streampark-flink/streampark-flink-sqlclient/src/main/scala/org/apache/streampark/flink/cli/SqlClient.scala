@@ -31,6 +31,9 @@ import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
 
+/**
+ * sql任务的入口类，继承scala的App，body代码就是main函数代码
+ */
 object SqlClient extends App {
 
   val arguments = ArrayBuffer(args: _*)
@@ -74,6 +77,7 @@ object SqlClient extends App {
       }
   }
 
+  // 启动入口方法，就是调用的StreamSqlApp的handle()方法
   mode match {
     case "STREAMING" | "AUTOMATIC" => StreamSqlApp.main(arguments.toArray)
     case "BATCH" => BatchSqlApp.main(arguments.toArray)
